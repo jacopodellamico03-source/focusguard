@@ -4,7 +4,7 @@ import Foundation
 public enum ChangeImpact: String, Equatable, Sendable {
     /// Rende le regole più severe: nessun PIN richiesto.
     case tightening
-    /// Allenta le regole: PIN (e in futuro attesa) richiesti.
+    /// Allenta le regole: attesa e PIN richiesti.
     case relaxing
     /// Nessun effetto sulle restrizioni (es. solo il nome).
     case neutral
@@ -62,6 +62,25 @@ public enum ChangePolicy {
         if relaxes { return .relaxing }
         if tightens { return .tightening }
         return .neutral
+    }
+
+    /// Blocco immediato. Le app scelte sono token opachi: cambiarle a blocco attivo è sempre "relaxing".
+    public static func manualBlockImpact(wasActive: Bool, isActive: Bool, selectionChanged: Bool) -> ChangeImpact {
+        switch (wasActive, isActive) {
+        case (true, false): return .relaxing
+        case (false, true): return .tightening
+        case (true, true): return selectionChanged ? .relaxing : .neutral
+        case (false, false): return .neutral
+        }
+    }
+
+    /// Preferenza "Impedisci la disinstallazione delle app".
+    public static func appRemovalProtectionImpact(wasEnabled: Bool, isEnabled: Bool) -> ChangeImpact {
+        switch (wasEnabled, isEnabled) {
+        case (true, false): return .relaxing
+        case (false, true): return .tightening
+        default: return .neutral
+        }
     }
 
     /// Minuti del giorno coperti dalla finestra (gestisce la mezzanotte).
