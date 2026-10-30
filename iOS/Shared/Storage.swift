@@ -12,6 +12,8 @@ struct RuleRepository {
     private var selectionsURL: URL { AppGroup.containerURL.appendingPathComponent("selections.json") }
     private var appliedSpecsURL: URL { AppGroup.containerURL.appendingPathComponent("applied-specs.json") }
     private var stateURL: URL { AppGroup.containerURL.appendingPathComponent("state.json") }
+    private var protectionURL: URL { AppGroup.containerURL.appendingPathComponent("protection.json") }
+    private var pendingSelectionsURL: URL { AppGroup.containerURL.appendingPathComponent("pending-selections.json") }
 
     // MARK: Regole
 
@@ -71,6 +73,37 @@ struct RuleRepository {
 
     func saveState(_ state: State) throws {
         try write(state, to: stateURL)
+    }
+
+    // MARK: Protezione (tentativi di PIN, richieste in attesa, preferenze)
+
+    /// Si guarda l'esistenza e non il contenuto: un file illeggibile non deve far sembrare nuova l'installazione.
+    var hasProtectionState: Bool {
+        FileManager.default.fileExists(atPath: protectionURL.path)
+    }
+
+    func loadProtection() -> ProtectionState {
+        read(ProtectionState.self, from: protectionURL) ?? ProtectionState()
+    }
+
+    func saveProtection(_ state: ProtectionState) throws {
+        try write(state, to: protectionURL)
+    }
+
+    /// Selezioni proposte dalle richieste in attesa, per id della richiesta.
+    func loadPendingSelections() -> [UUID: FamilyActivitySelection] {
+        let all = read([String: FamilyActivitySelection].self, from: pendingSelectionsURL) ?? [:]
+        var result: [UUID: FamilyActivitySelection] = [:]
+        for (key, value) in all {
+            if let id = UUID(uuidString: key) { result[id] = value }
+        }
+        return result
+    }
+
+    func savePendingSelections(_ selections: [UUID: FamilyActivitySelection]) throws {
+        var all: [String: FamilyActivitySelection] = [:]
+        for (id, selection) in selections { all[id.uuidString] = selection }
+        try write(all, to: pendingSelectionsURL)
     }
 
     // MARK: Helpers

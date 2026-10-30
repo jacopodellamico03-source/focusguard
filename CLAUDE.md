@@ -26,7 +26,7 @@ Sviluppo su Ubuntu; la compilazione iOS avviene in CI (GitHub Actions, macOS) o 
 - Le app sono token opachi (`ApplicationToken`): non provare a ricavarne nome o bundle ID.
 - Estensioni: memoria molto limitata. Niente SwiftData, niente rete, niente lavori pesanti.
 - File nell'App Group scritti con `.completeFileProtectionUntilFirstUserAuthentication`.
-- Uno `ManagedSettingsStore` per regola (`.rule(id)`) più `.manual`.
+- Uno `ManagedSettingsStore` per regola (`.rule(id)`) più `.manual` e `.protection` (disinstallazione, ora automatica).
 - Nuova logica → prima in RuleEngine con test XCTest, poi il collegamento iOS.
 - Log con `Log.app` / `Log.monitor` (OSLog, subsystem `it.jacopo.focusguard`).
 - Testi dell'interfaccia in italiano.
@@ -41,7 +41,7 @@ Sviluppo su Ubuntu; la compilazione iOS avviene in CI (GitHub Actions, macOS) o 
 ## Stato
 
 - [x] Fase 1–4: autorizzazione, blocco immediato, blocchi a orario, limiti giornalieri (codice scritto, da provare su device)
-- [ ] Fase 5: PIN in Keychain + Face ID + Cooldown (logica `ChangePolicy`/`Cooldown` già in RuleEngine; vedi i `TODO(Fase 5)` in `AppModel`)
+- [x] Fase 5: PIN in Keychain + Face ID + attesa di 10 minuti con conferma entro 30, blocco disinstallazione opzionale, ora automatica (codice scritto, da provare su device)
 - [ ] Fase 6: estensioni ShieldConfiguration, ShieldAction, DeviceActivityReport
 - [ ] Firma e installazione: richiede Apple Developer Program (Family Controls non disponibile con account gratuito)
 
@@ -49,3 +49,10 @@ Sviluppo su Ubuntu; la compilazione iOS avviene in CI (GitHub Actions, macOS) o 
 
 - `DeviceActivityEvent(..., includesPastActivity: true)`: che la soglia non scatti in anticipo.
 - `intervalDidStart` quando il monitoraggio parte a finestra già aperta (l'app blocca comunque subito).
+- `denyAppRemoval`: se vale per tutte le app o solo per FocusGuard, e se regge con autorizzazione `.individual` (revocabile dalle Impostazioni).
+- `requireAutomaticDateAndTime`: se iOS lo rispetta con autorizzazione `.individual`.
+- `PINStore` e Face ID: creazione, verifica e cambio PIN (la CI li compila soltanto, non li esegue).
+- Il Keychain sopravvive alla disinstallazione: dopo una reinstallazione deve tornare la schermata di creazione PIN.
+- Modifica confermata a un limite già scattato: dopo il riavvio del monitoraggio la soglia deve riscattare se l'uso la supera già.
+- Selettore del blocco immediato: se aggiorna la selezione solo alla conferma. Se la aggiornasse a ogni tocco, a blocco attivo la richiesta catturerebbe solo il primo cambio.
+- Pulsanti "Conferma"/"Annulla" nelle righe della lista: che non si attivino a vicenda.

@@ -71,6 +71,7 @@ struct RulesListView: View {
 
                 Section {
                     NavigationLink("Registro eventi") { EventLogView() }
+                    NavigationLink("Impostazioni") { SettingsView() }
                     #if DEBUG
                     Button("Sblocca tutto (debug)", role: .destructive) {
                         model.emergencyUnshieldAll()
@@ -110,39 +111,60 @@ private struct RuleRow: View {
     let onEdit: () -> Void
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(rule.name).font(.headline)
-                Text(Formatting.summary(of: rule)).font(.subheadline).foregroundStyle(.secondary)
-                Text(model.selection(for: rule.id).summary).font(.caption).foregroundStyle(.secondary)
+        let pending = model.pendingRelaxation(for: .rule(rule.id))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(rule.name).font(.headline)
+                    Text(Formatting.summary(of: rule)).font(.subheadline).foregroundStyle(.secondary)
+                    Text(model.selection(for: rule.id).summary).font(.caption).foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    // Con una richiesta in attesa la regola non si modifica: va prima annullata.
+                    if pending == nil { onEdit() }
+                }
+                Spacer()
+                Toggle("Attiva", isOn: Binding(
+                    get: { rule.isEnabled },
+                    set: { model.setEnabled($0, for: rule.id) }
+                ))
+                .labelsHidden()
+                .disabled(pending != nil)
             }
-            .contentShape(Rectangle())
-            .onTapGesture(perform: onEdit)
-            Spacer()
-            Toggle("Attiva", isOn: Binding(
-                get: { rule.isEnabled },
-                set: { model.setEnabled($0, for: rule.id) }
-            ))
-            .labelsHidden()
+            if let pending {
+                PendingRelaxationView(request: pending)
+            }
         }
+        .deleteDisabled(pending != nil)
     }
 }
 
 private struct ManualBlockSection: View {
     @Environment(AppModel.self) private var model
     @State private var isPickerPresented = false
+    /// Il selettore lavora su una copia: a blocco attivo la selezione cambia solo dopo l'attesa.
+    @State private var draft = FamilyActivitySelection()
 
     var body: some View {
-        @Bindable var model = model
-        Button("Scegli app da bloccare") { isPickerPresented = true }
+        let pending = model.pendingRelaxation(for: .manualBlock)
+        Button("Scegli app da bloccare") {
+            draft = model.manualSelection
+            isPickerPresented = true
+        }
+        .disabled(pending != nil)
         Text(model.manualSelection.summary).font(.caption).foregroundStyle(.secondary)
         Toggle("Blocca ora", isOn: Binding(
             get: { model.isManualBlockActive },
             set: { model.setManualBlock($0) }
         ))
-        .familyActivityPicker(isPresented: $isPickerPresented, selection: $model.manualSelection)
-        .onChange(of: model.manualSelection) { _, _ in
-            model.manualSelectionChanged()
+        .disabled(pending != nil)
+        .familyActivityPicker(isPresented: $isPickerPresented, selection: $draft)
+        .onChange(of: draft) { _, newValue in
+            model.setManualSelection(newValue)
+        }
+        if let pending {
+            PendingRelaxationView(request: pending)
         }
     }
 }

@@ -13,7 +13,8 @@ Uso esclusivamente personale, nessuna distribuzione.
 | Limite giornaliero per gruppo di app | Codice pronto |
 | Tempo totale (limite su tutte le categorie) | Codice pronto |
 | Registro eventi | Codice pronto |
-| PIN / Face ID sulle modifiche che allentano le regole | Fase 5 (logica già testata) |
+| PIN / Face ID e attesa sulle modifiche che allentano le regole | Codice pronto |
+| Blocco della disinstallazione (opzionale) e ora automatica | Codice pronto |
 | Schermata di blocco personalizzata, statistiche d'uso | Fase 6 |
 
 ## Struttura

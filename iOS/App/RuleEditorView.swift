@@ -58,6 +58,13 @@ struct RuleEditorView: View {
                         }
                     }
                 }
+
+                if !isNew && model.requiresWait(saving: draft, selection: selection) {
+                    Section {
+                        Text("Questa modifica allenta la regola: avrà effetto dopo un'attesa di 10 minuti e la conferma col PIN.")
+                            .foregroundStyle(.orange)
+                    }
+                }
             }
             .navigationTitle(isNew ? "Nuova regola" : "Modifica regola")
             .navigationBarTitleDisplayMode(.inline)

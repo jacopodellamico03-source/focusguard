@@ -1,7 +1,30 @@
+import Foundation
 import RuleEngine
 
 /// Testi in italiano per l'interfaccia.
 enum Formatting {
+    /// Conto alla rovescia, es. "9:05" o "1:00:00". Arrotonda per eccesso: non mostra 0:00 prima del tempo.
+    static func countdown(_ interval: TimeInterval) -> String {
+        let total = Int(interval.rounded(.up))
+        let (hours, minutes, seconds) = (total / 3600, total % 3600 / 60, total % 60)
+        let tail = String(format: "%02d", seconds)
+        if hours > 0 {
+            return "\(hours):\(String(format: "%02d", minutes)):\(tail)"
+        }
+        return "\(minutes):\(tail)"
+    }
+
+    static func label(for change: PendingRelaxation.Change) -> String {
+        switch change {
+        case .disableRule: return "Disattivazione"
+        case .deleteRule: return "Eliminazione"
+        case .editRule: return "Modifica"
+        case .disableManualBlock: return "Sblocco"
+        case .changeManualSelection: return "Cambio app"
+        case .disableAppRemovalProtection: return "Disattivazione"
+        }
+    }
+
     static func duration(minutes: Int) -> String {
         let hours = minutes / 60
         let rest = minutes % 60

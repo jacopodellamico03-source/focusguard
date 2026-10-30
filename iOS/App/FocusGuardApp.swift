@@ -24,7 +24,11 @@ struct RootView: View {
     var body: some View {
         switch model.authorizationStatus {
         case .approved:
-            RulesListView()
+            if model.hasPIN {
+                RulesListView()
+            } else {
+                PINSetupView()
+            }
         default:
             AuthorizationView()
         }

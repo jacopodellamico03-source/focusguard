@@ -30,6 +30,9 @@ extension ManagedSettingsStore.Name {
     }
 
     static let manual = ManagedSettingsStore.Name("manual")
+
+    /// Protezioni di sistema, separate dai blocchi: togliere uno shield non le tocca.
+    static let protection = ManagedSettingsStore.Name("protection")
 }
 
 /// Applica e rimuove i blocchi (shield).
@@ -54,6 +57,12 @@ struct ShieldController {
     func unshieldEverything(ruleIDs: [UUID]) {
         ruleIDs.forEach { unshield(.rule($0)) }
         unshield(.manual)
+    }
+
+    func setProtection(denyAppRemoval: Bool, requireAutomaticDateAndTime: Bool) {
+        let store = ManagedSettingsStore(named: .protection)
+        store.application.denyAppRemoval = denyAppRemoval
+        store.dateAndTime.requireAutomaticDateAndTime = requireAutomaticDateAndTime
     }
 }
 
