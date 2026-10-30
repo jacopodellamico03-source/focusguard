@@ -34,7 +34,7 @@ Sviluppo su Ubuntu; la compilazione iOS avviene in CI (GitHub Actions, macOS) o 
 
 ## Comandi
 
-- Test logica (Ubuntu): `swift test --package-path Packages/RuleEngine`
+- Test logica (Ubuntu): `LC_ALL=C swift test --package-path Packages/RuleEngine -Xswiftc -use-ld=lld` (con il linker di default la build fallisce su questo sistema)
 - Build iOS: push su `main` o "Run workflow" in GitHub Actions (job `ios-build`)
 - Log dal telefono: `idevicesyslog | grep it.jacopo.focusguard`
 
