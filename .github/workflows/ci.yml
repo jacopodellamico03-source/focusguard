@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     container: swift:6.0-noble
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Test RuleEngine
         run: swift test --package-path Packages/RuleEngine
 
@@ -23,7 +23,7 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Installa XcodeGen
         run: brew install xcodegen
       - name: Genera il progetto

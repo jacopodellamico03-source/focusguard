@@ -205,7 +205,11 @@ final class AppModel {
         guard pendingRelaxation(for: .appRemovalProtection) == nil else { return }
         let impact = ChangePolicy.appRemovalProtectionImpact(
             wasEnabled: protection.preventsAppRemoval,
-            isEnabled: enabled
+            isEnabled: enabled,
+            hasActiveRestrictions: ProtectionPolicy.hasActiveRestrictions(
+                rules: rules,
+                isManualBlockActive: isManualBlockActive
+            )
         )
         if impact == .relaxing {
             enqueue(.disableAppRemovalProtection)
@@ -224,6 +228,10 @@ final class AppModel {
 
     func createPIN(_ pin: String) {
         guard !hasPIN, PINPolicy.validate(pin).isEmpty else { return }
+        // Residuo possibile se l'app è morta a metà di un reset: non deve valere per il PIN nuovo.
+        if let reset = pendingRelaxation(for: .pinReset) {
+            forgetRequest(id: reset.id)
+        }
         do {
             // Prima il file: un PIN senza file di protezione è trattato come residuo di una vecchia installazione.
             try repository.saveProtection(protection)
@@ -249,6 +257,12 @@ final class AppModel {
             Log.app.error("PIN non salvato: \(String(describing: error), privacy: .public)")
             return .unavailable
         }
+    }
+
+    /// PIN dimenticato: avvia l'attesa del reset. Le regole restano attive.
+    func requestPINReset() {
+        guard hasPIN else { return }
+        enqueue(.resetPIN)
     }
 
     /// Durante il blocco il PIN non viene nemmeno verificato.
@@ -327,6 +341,14 @@ final class AppModel {
         return true
     }
 
+    /// Solo per le richieste che non chiedono PIN né Face ID.
+    func confirmPendingWithoutAuthentication(id: UUID) {
+        guard let request = protection.pending.request(id: id),
+              !request.requiresAuthentication,
+              isConfirmable(id: id) else { return }
+        applyConfirmed(id: id)
+    }
+
     private func isConfirmable(id: UUID) -> Bool {
         guard let request = protection.pending.request(id: id), request.canConfirm(at: Date()) else {
             errorMessage = "Richiesta non più confermabile."
@@ -387,6 +409,18 @@ final class AppModel {
         case .disableAppRemovalProtection:
             protection.preventsAppRemoval = false
             updateProtection()
+        case .resetPIN:
+            do {
+                try pinStore.delete()
+            } catch {
+                // La richiesta resta: si può riprovare finché la finestra è aperta.
+                errorMessage = "PIN non cancellato: \(String(describing: error))"
+                Log.app.error("PIN non cancellato: \(String(describing: error), privacy: .public)")
+                return
+            }
+            // Il PIN nuovo non eredita il blocco dei tentativi. Senza PIN, RootView mostra PINSetupView.
+            protection.attempts = PINAttemptPolicy()
+            hasPIN = false
         }
 
         forgetRequest(id: id)

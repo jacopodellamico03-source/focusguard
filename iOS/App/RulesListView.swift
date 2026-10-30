@@ -46,6 +46,12 @@ struct RulesListView: View {
     var body: some View {
         NavigationStack {
             List {
+                if let reset = model.pendingRelaxation(for: .pinReset) {
+                    Section("PIN") {
+                        PendingRelaxationView(request: reset)
+                    }
+                }
+
                 Section("Blocco immediato") {
                     ManualBlockSection()
                 }

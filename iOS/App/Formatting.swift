@@ -22,6 +22,7 @@ enum Formatting {
         case .disableManualBlock: return "Sblocco"
         case .changeManualSelection: return "Cambio app"
         case .disableAppRemovalProtection: return "Disattivazione"
+        case .resetPIN: return "Reset del PIN"
         }
     }
 

@@ -75,9 +75,14 @@ public enum ChangePolicy {
     }
 
     /// Preferenza "Impedisci la disinstallazione delle app".
-    public static func appRemovalProtectionImpact(wasEnabled: Bool, isEnabled: Bool) -> ChangeImpact {
+    /// Senza regole attive né blocco immediato la protezione è già spenta: toglierla non allenta nulla.
+    public static func appRemovalProtectionImpact(
+        wasEnabled: Bool,
+        isEnabled: Bool,
+        hasActiveRestrictions: Bool
+    ) -> ChangeImpact {
         switch (wasEnabled, isEnabled) {
-        case (true, false): return .relaxing
+        case (true, false): return hasActiveRestrictions ? .relaxing : .neutral
         case (false, true): return .tightening
         default: return .neutral
         }

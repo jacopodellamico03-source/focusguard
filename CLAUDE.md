@@ -41,7 +41,7 @@ Sviluppo su Ubuntu; la compilazione iOS avviene in CI (GitHub Actions, macOS) o 
 ## Stato
 
 - [x] Fase 1–4: autorizzazione, blocco immediato, blocchi a orario, limiti giornalieri (codice scritto, da provare su device)
-- [x] Fase 5: PIN in Keychain + Face ID + attesa di 10 minuti con conferma entro 30, blocco disinstallazione opzionale, ora automatica (codice scritto, da provare su device)
+- [x] Fase 5: PIN in Keychain + Face ID + attesa di 10 minuti con conferma entro 30, blocco disinstallazione opzionale, ora automatica, reset del PIN dimenticato dopo 24 ore (codice scritto, da provare su device)
 - [ ] Fase 6: estensioni ShieldConfiguration, ShieldAction, DeviceActivityReport
 - [ ] Firma e installazione: richiede Apple Developer Program (Family Controls non disponibile con account gratuito)
 
@@ -56,3 +56,5 @@ Sviluppo su Ubuntu; la compilazione iOS avviene in CI (GitHub Actions, macOS) o 
 - Modifica confermata a un limite già scattato: dopo il riavvio del monitoraggio la soglia deve riscattare se l'uso la supera già.
 - Selettore del blocco immediato: se aggiorna la selezione solo alla conferma. Se la aggiornasse a ogni tocco, a blocco attivo la richiesta catturerebbe solo il primo cambio.
 - Pulsanti "Conferma"/"Annulla" nelle righe della lista: che non si attivino a vicenda.
+- Reset del PIN: "PIN dimenticato?" avvia l'attesa di 24 ore, la riga resta visibile riaprendo l'app, la conferma non chiede nulla e porta a `PINSetupView`; regole e blocchi restano attivi per tutto il tempo.
+- Opzione disinstallazione: senza regole attive né blocco immediato si disattiva subito; con almeno uno dei due parte l'attesa.

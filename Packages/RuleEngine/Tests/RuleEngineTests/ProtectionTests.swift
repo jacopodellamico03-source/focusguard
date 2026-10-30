@@ -192,7 +192,8 @@ final class PendingRelaxationTests: XCTestCase {
             (.editRule(rule), .rule(id)),
             (.disableManualBlock, .manualBlock),
             (.changeManualSelection, .manualBlock),
-            (.disableAppRemovalProtection, .appRemovalProtection)
+            (.disableAppRemovalProtection, .appRemovalProtection),
+            (.resetPIN, .pinReset)
         ]
         for (change, target) in cases {
             XCTAssertEqual(PendingRelaxation(change: change, requestedAt: start).target, target)
@@ -203,13 +204,40 @@ final class PendingRelaxationTests: XCTestCase {
         let rule = limitRule(60)
         let changes: [PendingRelaxation.Change] = [
             .disableRule(rule.id), .deleteRule(rule.id), .editRule(rule),
-            .disableManualBlock, .changeManualSelection, .disableAppRemovalProtection
+            .disableManualBlock, .changeManualSelection, .disableAppRemovalProtection, .resetPIN
         ]
         for change in changes {
             let request = PendingRelaxation(change: change, requestedAt: start)
             let decoded = try JSONDecoder().decode(PendingRelaxation.self, from: JSONEncoder().encode(request))
             XCTAssertEqual(decoded, request)
         }
+    }
+
+    func testResetPINWaitsOneDayWithTheSameWindow() {
+        XCTAssertEqual(PendingRelaxation.pinResetCooldownDuration, 86_400)
+
+        let request = PendingRelaxation(change: .resetPIN, requestedAt: start)
+        XCTAssertEqual(request.cooldown.duration, 86_400)
+        XCTAssertEqual(request.remaining(at: start), 86_400)
+        XCTAssertEqual(request.expiresAt, start.addingTimeInterval(86_400 + PendingRelaxation.confirmationWindow))
+
+        XCTAssertEqual(request.phase(at: start.addingTimeInterval(600)), .waiting)
+        XCTAssertEqual(request.phase(at: start.addingTimeInterval(86_399)), .waiting)
+        XCTAssertEqual(request.phase(at: start.addingTimeInterval(86_400)), .confirmable)
+        XCTAssertEqual(request.phase(at: start.addingTimeInterval(88_199)), .confirmable)
+        XCTAssertEqual(request.phase(at: start.addingTimeInterval(88_200)), .expired)
+    }
+
+    func testOnlyResetPINSkipsAuthentication() {
+        let id = UUID()
+        let authenticated: [PendingRelaxation.Change] = [
+            .disableRule(id), .deleteRule(id), .editRule(limitRule(30)),
+            .disableManualBlock, .changeManualSelection, .disableAppRemovalProtection
+        ]
+        for change in authenticated {
+            XCTAssertTrue(PendingRelaxation(change: change, requestedAt: start).requiresAuthentication, "\(change)")
+        }
+        XCTAssertFalse(PendingRelaxation(change: .resetPIN, requestedAt: start).requiresAuthentication)
     }
 }
 
@@ -242,6 +270,31 @@ final class PendingRelaxationQueueTests: XCTestCase {
         queue.enqueue(.disableManualBlock, at: start)
         queue.enqueue(.disableAppRemovalProtection, at: start)
         XCTAssertEqual(queue.items.count, 4)
+    }
+
+    func testResetPINDoesNotOccupyOtherTargets() {
+        var queue = PendingRelaxationQueue()
+        let id = UUID()
+        let reset = queue.enqueue(.resetPIN, at: start)
+        // Durante l'attesa del reset tutto il resto funziona normalmente.
+        XCTAssertNil(queue.pending(for: .rule(id)))
+        XCTAssertNil(queue.pending(for: .manualBlock))
+        let disable = queue.enqueue(.disableRule(id), at: start)
+        XCTAssertEqual(queue.items, [reset, disable])
+    }
+
+    func testRepeatedResetPINKeepsTheTimer() {
+        var queue = PendingRelaxationQueue()
+        let first = queue.enqueue(.resetPIN, at: start)
+        XCTAssertEqual(queue.enqueue(.resetPIN, at: start.addingTimeInterval(3600)), first)
+    }
+
+    func testResetPINExpiresLaterThanOtherRequests() {
+        var queue = PendingRelaxationQueue()
+        let reset = queue.enqueue(.resetPIN, at: start)
+        let disable = queue.enqueue(.disableManualBlock, at: start)
+        XCTAssertEqual(queue.removeExpired(at: start.addingTimeInterval(2400)), [disable])
+        XCTAssertEqual(queue.items, [reset])
     }
 
     func testRemove() {
@@ -281,17 +334,29 @@ final class ManualBlockImpactTests: XCTestCase {
 }
 
 final class AppRemovalProtectionImpactTests: XCTestCase {
-    func testImpact() {
-        XCTAssertEqual(ChangePolicy.appRemovalProtectionImpact(wasEnabled: true, isEnabled: false), .relaxing)
-        XCTAssertEqual(ChangePolicy.appRemovalProtectionImpact(wasEnabled: false, isEnabled: true), .tightening)
-        XCTAssertEqual(ChangePolicy.appRemovalProtectionImpact(wasEnabled: true, isEnabled: true), .neutral)
-        XCTAssertEqual(ChangePolicy.appRemovalProtectionImpact(wasEnabled: false, isEnabled: false), .neutral)
+    func testImpactWithActiveRestrictions() {
+        XCTAssertEqual(ChangePolicy.appRemovalProtectionImpact(wasEnabled: true, isEnabled: false, hasActiveRestrictions: true), .relaxing)
+        XCTAssertEqual(ChangePolicy.appRemovalProtectionImpact(wasEnabled: false, isEnabled: true, hasActiveRestrictions: true), .tightening)
+        XCTAssertEqual(ChangePolicy.appRemovalProtectionImpact(wasEnabled: true, isEnabled: true, hasActiveRestrictions: true), .neutral)
+        XCTAssertEqual(ChangePolicy.appRemovalProtectionImpact(wasEnabled: false, isEnabled: false, hasActiveRestrictions: true), .neutral)
+    }
+
+    func testDisablingWithNothingActiveRelaxesNothing() {
+        XCTAssertEqual(ChangePolicy.appRemovalProtectionImpact(wasEnabled: true, isEnabled: false, hasActiveRestrictions: false), .neutral)
+        XCTAssertEqual(ChangePolicy.appRemovalProtectionImpact(wasEnabled: false, isEnabled: true, hasActiveRestrictions: false), .tightening)
     }
 }
 
 final class ProtectionPolicyTests: XCTestCase {
     private let on = limitRule(30)
     private let off = limitRule(30, enabled: false)
+
+    func testHasActiveRestrictions() {
+        XCTAssertTrue(ProtectionPolicy.hasActiveRestrictions(rules: [off, on], isManualBlockActive: false))
+        XCTAssertTrue(ProtectionPolicy.hasActiveRestrictions(rules: [off], isManualBlockActive: true))
+        XCTAssertFalse(ProtectionPolicy.hasActiveRestrictions(rules: [off], isManualBlockActive: false))
+        XCTAssertFalse(ProtectionPolicy.hasActiveRestrictions(rules: [], isManualBlockActive: false))
+    }
 
     func testDenyAppRemovalNeedsPreferenceAndSomethingActive() {
         XCTAssertTrue(ProtectionPolicy.shouldDenyAppRemoval(rules: [on], isManualBlockActive: false, preventsAppRemoval: true))

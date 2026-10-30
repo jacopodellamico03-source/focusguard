@@ -11,6 +11,8 @@ public struct PendingRelaxation: Codable, Equatable, Identifiable, Sendable {
         case disableManualBlock
         case changeManualSelection
         case disableAppRemovalProtection
+        /// PIN dimenticato: cancella il PIN, le regole restano come sono.
+        case resetPIN
     }
 
     /// Ciò che la richiesta tiene occupato: una sola richiesta per volta su ciascun bersaglio.
@@ -18,6 +20,7 @@ public struct PendingRelaxation: Codable, Equatable, Identifiable, Sendable {
         case rule(UUID)
         case manualBlock
         case appRemovalProtection
+        case pinReset
     }
 
     public enum Phase: Equatable, Sendable {
@@ -27,6 +30,8 @@ public struct PendingRelaxation: Codable, Equatable, Identifiable, Sendable {
     }
 
     public static let cooldownDuration: TimeInterval = 600
+    /// Il reset salta il PIN: l'unico freno è un'attesa molto più lunga.
+    public static let pinResetCooldownDuration: TimeInterval = 86_400
     /// Finita l'attesa la conferma vale per poco: altrimenti una richiesta tenuta "armata"
     /// permetterebbe di togliere la regola all'istante, in qualsiasi momento.
     public static let confirmationWindow: TimeInterval = 1800
@@ -38,8 +43,14 @@ public struct PendingRelaxation: Codable, Equatable, Identifiable, Sendable {
     public init(id: UUID = UUID(), change: Change, requestedAt: Date) {
         self.id = id
         self.change = change
-        self.cooldown = Cooldown(requestedAt: requestedAt, duration: Self.cooldownDuration)
+        self.cooldown = Cooldown(
+            requestedAt: requestedAt,
+            duration: change == .resetPIN ? Self.pinResetCooldownDuration : Self.cooldownDuration
+        )
     }
+
+    /// La conferma chiede PIN o Face ID? Non il reset: chi lo chiede il PIN non lo ricorda.
+    public var requiresAuthentication: Bool { change != .resetPIN }
 
     public var target: Target {
         switch change {
@@ -51,6 +62,8 @@ public struct PendingRelaxation: Codable, Equatable, Identifiable, Sendable {
             return .manualBlock
         case .disableAppRemovalProtection:
             return .appRemovalProtection
+        case .resetPIN:
+            return .pinReset
         }
     }
 

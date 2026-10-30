@@ -19,11 +19,14 @@ struct SettingsView: View {
             } header: {
                 Text("Protezione")
             } footer: {
-                Text("Vale finché c'è almeno una regola attiva o il blocco immediato. Probabilmente iOS blocca la disinstallazione di tutte le app del telefono, non solo di FocusGuard. Disattivare l'opzione richiede un'attesa di 10 minuti e il PIN.")
+                Text("Vale finché c'è almeno una regola attiva o il blocco immediato. Probabilmente iOS blocca la disinstallazione di tutte le app del telefono, non solo di FocusGuard. Con regole attive o blocco immediato, disattivare l'opzione richiede un'attesa di 10 minuti e il PIN.")
             }
 
             Section("PIN") {
                 NavigationLink("Cambia PIN") { ChangePINView() }
+                if let reset = model.pendingRelaxation(for: .pinReset) {
+                    PendingRelaxationView(request: reset)
+                }
             }
         }
         .navigationTitle("Impostazioni")
@@ -50,6 +53,11 @@ struct PendingRelaxationView: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
                     .monospacedDigit()
+                if !request.requiresAuthentication {
+                    Text("La conferma cancella il PIN attuale senza chiederlo: subito dopo ne creerai uno nuovo.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 HStack(spacing: 20) {
                     Button("Conferma", action: confirm)
                         .disabled(phase != .confirmable)
@@ -82,6 +90,10 @@ struct PendingRelaxationView: View {
     }
 
     private func confirm() {
+        guard request.requiresAuthentication else {
+            model.confirmPendingWithoutAuthentication(id: request.id)
+            return
+        }
         Task {
             if await !model.confirmPendingWithBiometrics(id: request.id) {
                 isPINPresented = true

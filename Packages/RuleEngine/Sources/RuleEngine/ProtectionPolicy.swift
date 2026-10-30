@@ -16,7 +16,7 @@ public enum ProtectionPolicy {
         hasActiveRestrictions(rules: rules, isManualBlockActive: isManualBlockActive)
     }
 
-    private static func hasActiveRestrictions(rules: [Rule], isManualBlockActive: Bool) -> Bool {
+    public static func hasActiveRestrictions(rules: [Rule], isManualBlockActive: Bool) -> Bool {
         isManualBlockActive || rules.contains { $0.isEnabled }
     }
 }

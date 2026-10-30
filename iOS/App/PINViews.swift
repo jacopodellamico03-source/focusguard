@@ -98,6 +98,16 @@ struct PINEntryView: View {
                         Button("Conferma", action: confirm)
                             .disabled(lockout > 0 || pin.isEmpty)
                     }
+                    // Disponibile anche durante il blocco dei tentativi: è lì che serve di più.
+                    Section {
+                        Button("PIN dimenticato?") {
+                            model.requestPINReset()
+                            dismiss()
+                        }
+                        .disabled(model.pendingRelaxation(for: .pinReset) != nil)
+                    } footer: {
+                        Text("Avvia un'attesa di 24 ore. Alla fine avrai 30 minuti per confermare e creare un PIN nuovo. Nel frattempo le regole restano attive.")
+                    }
                 }
             }
             .navigationTitle("Inserisci il PIN")
