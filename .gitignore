@@ -1,0 +1,18 @@
+# Generati
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+.build/
+.swiftpm/
+build/
+xcuserdata/
+
+# Artefatti di firma e build: mai nel repo
+*.ipa
+*.p12
+*.mobileprovision
+*.cer
+Signing.xcconfig
+
+# Sistema
+.DS_Store

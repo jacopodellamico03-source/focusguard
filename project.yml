@@ -1,0 +1,65 @@
+# Progetto Xcode generato con XcodeGen: `xcodegen generate` (su macOS o nella CI).
+# Il .xcodeproj non va committato: la fonte di verità è questo file.
+name: FocusGuard
+
+options:
+  bundleIdPrefix: it.jacopo
+  deploymentTarget:
+    iOS: "17.4"
+  createIntermediateGroups: true
+  developmentLanguage: it
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    # Inserisci il tuo Team ID dopo l'iscrizione all'Apple Developer Program.
+    DEVELOPMENT_TEAM: ""
+    TARGETED_DEVICE_FAMILY: "1"
+
+packages:
+  RuleEngine:
+    path: Packages/RuleEngine
+
+targets:
+  FocusGuard:
+    type: application
+    platform: iOS
+    sources:
+      - iOS/App
+      - iOS/Shared
+    dependencies:
+      - package: RuleEngine
+      - target: FocusGuardMonitor
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: it.jacopo.focusguard
+        INFOPLIST_FILE: iOS/Config/App-Info.plist
+        CODE_SIGN_ENTITLEMENTS: iOS/Config/App.entitlements
+
+  FocusGuardMonitor:
+    type: app-extension
+    platform: iOS
+    sources:
+      - iOS/MonitorExtension
+      - iOS/Shared
+    dependencies:
+      - package: RuleEngine
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: it.jacopo.focusguard.monitor
+        INFOPLIST_FILE: iOS/Config/Monitor-Info.plist
+        CODE_SIGN_ENTITLEMENTS: iOS/Config/Monitor.entitlements
+
+schemes:
+  FocusGuard:
+    build:
+      targets:
+        FocusGuard: all
+        FocusGuardMonitor: all
+    run:
+      config: Debug
+    archive:
+      config: Release
