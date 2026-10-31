@@ -257,6 +257,10 @@ final class AppModel {
         do {
             try pinStore.set(new)
             errorMessage = nil
+            if protection.pending.cancelPINReset() != nil {
+                persistProtection()
+                syncNotifications()
+            }
             return .success
         } catch {
             errorMessage = "PIN non salvato: \(String(describing: error))"

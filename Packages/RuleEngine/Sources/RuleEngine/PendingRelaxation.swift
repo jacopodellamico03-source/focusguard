@@ -113,6 +113,15 @@ public struct PendingRelaxationQueue: Codable, Equatable, Sendable {
         items.removeAll { $0.id == id }
     }
 
+    /// PIN cambiato: chi ha appena inserito quello attuale lo ricorda, il reset non serve più.
+    /// Restituisce la richiesta tolta, nil se non c'era.
+    @discardableResult
+    public mutating func cancelPINReset() -> PendingRelaxation? {
+        guard let reset = pending(for: .pinReset) else { return nil }
+        remove(id: reset.id)
+        return reset
+    }
+
     /// Toglie le richieste scadute e le restituisce, così il chiamante può ripulire ciò che ha salvato a parte.
     @discardableResult
     public mutating func removeExpired(at date: Date) -> [PendingRelaxation] {

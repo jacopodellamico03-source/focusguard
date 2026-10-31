@@ -315,6 +315,55 @@ final class PendingRelaxationQueueTests: XCTestCase {
         XCTAssertEqual(removed, [old])
         XCTAssertEqual(queue.items, [recent])
     }
+
+    func testCancelPINResetRemovesOnlyTheReset() {
+        var queue = PendingRelaxationQueue()
+        let disable = queue.enqueue(.disableRule(UUID()), at: start)
+        let reset = queue.enqueue(.resetPIN, at: start)
+        let manual = queue.enqueue(.disableManualBlock, at: start)
+        XCTAssertEqual(queue.cancelPINReset(), reset)
+        XCTAssertNil(queue.pending(for: .pinReset))
+        XCTAssertEqual(queue.items, [disable, manual])
+    }
+
+    func testCancelPINResetWithoutResetChangesNothing() {
+        var queue = PendingRelaxationQueue()
+        let manual = queue.enqueue(.disableManualBlock, at: start)
+        XCTAssertNil(queue.cancelPINReset())
+        XCTAssertEqual(queue.items, [manual])
+    }
+
+    func testCancelPINResetAlsoWorksInsideTheConfirmationWindow() {
+        var queue = PendingRelaxationQueue()
+        let reset = queue.enqueue(.resetPIN, at: start)
+        XCTAssertTrue(reset.canConfirm(at: start.addingTimeInterval(86_400)))
+        XCTAssertEqual(queue.cancelPINReset(), reset)
+        XCTAssertTrue(queue.items.isEmpty)
+    }
+
+    func testResetRequestedAfterCancelWaitsAgain() {
+        var queue = PendingRelaxationQueue()
+        queue.enqueue(.resetPIN, at: start)
+        queue.cancelPINReset()
+        let later = start.addingTimeInterval(3600)
+        XCTAssertEqual(queue.enqueue(.resetPIN, at: later).remaining(at: later), 86_400)
+    }
+
+    func testCancelledResetLosesItsNotifications() {
+        var queue = PendingRelaxationQueue()
+        let manual = queue.enqueue(.disableManualBlock, at: start)
+        let reset = queue.enqueue(.resetPIN, at: start)
+        let scheduled = Set(
+            (RelaxationNotificationPlan.notifications(for: manual, now: start)
+                + RelaxationNotificationPlan.notifications(for: reset, now: start)).map(\.identifier)
+        )
+
+        queue.cancelPINReset()
+
+        let result = RelaxationNotificationPlan.reconcile(requests: queue.items, scheduled: scheduled, delivered: [], now: start)
+        XCTAssertEqual(result.toSchedule, [])
+        XCTAssertEqual(result.toCancel, Set(RelaxationNotificationPlan.notifications(for: reset, now: start).map(\.identifier)))
+    }
 }
 
 final class ManualBlockImpactTests: XCTestCase {
