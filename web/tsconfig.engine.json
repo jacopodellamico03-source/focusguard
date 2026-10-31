@@ -1,0 +1,9 @@
+{
+  // Senza la libreria DOM: se il motore usa document o localStorage, non compila.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"]
+  },
+  "include": ["src/engine"],
+  "exclude": ["src/engine/**/*.test.ts"]
+}

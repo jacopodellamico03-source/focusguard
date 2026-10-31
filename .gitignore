@@ -16,3 +16,7 @@ Signing.xcconfig
 
 # Sistema
 .DS_Store
+
+# Web
+node_modules/
+web/dist/
