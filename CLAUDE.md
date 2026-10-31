@@ -1,9 +1,51 @@
 # FocusGuard — istruzioni per Claude Code
 
-App iOS personale (non distribuita) per limitare il tempo d'uso delle app sul mio iPhone.
-Sviluppo su Ubuntu; la compilazione iOS avviene in CI (GitHub Actions, macOS) o con xtool.
+Strumento personale (non distribuito) per limitare il tempo d'uso delle app sul mio iPhone.
+L'app nativa richiede l'account Apple a pagamento, che non voglio: si costruisce una web app gratuita che,
+con Comandi rapidi di iOS 27, blocca Instagram, TikTok e YouTube. Sviluppo su Ubuntu.
 
 ## Architettura
+
+Decisa e descritta in `web/DESIGN.md`: non cambiarla senza dirmelo.
+
+- `web/src/engine/` — logica pura in TypeScript: **niente DOM, niente localStorage, tempo sempre passato come parametro**.
+  `tsconfig.engine.json` lo impone. Ogni decisione (bloccare o no, pass offerti, validazione, quando chiedere il PIN) vive qui.
+- `web/src/crypto/` — PBKDF2 via WebCrypto.
+- `web/src/main.tsx` — segnaposto fino alla fase W2.
+- `iOS/`, `Packages/`, `project.yml` — **congelati: non toccarli** (vedi "Parte iOS congelata").
+
+## Regole
+
+- Nuova logica → prima in `web/src/engine/` con test Vitest, poi il collegamento all'interfaccia.
+- Nei test il fuso è fisso, Europe/Rome.
+- Fail-closed: senza dati `AccessDecision.decide` non offre pass (`web/DESIGN.md`).
+- Testi dell'interfaccia in italiano.
+- Se non sei sicuro di un'azione di Comandi rapidi o di un comportamento di Safari, dillo e indica cosa verificare.
+
+## Comandi
+
+Node 26 LTS è in `~/.local/bin`. Da `web/`:
+
+- Installazione: `npm ci`
+- Test: `npm test`
+- Controllo dei tipi: `npm run typecheck`
+- Build (con controllo dei tipi): `npm run build`
+
+CI: `.github/workflows/ci.yml` (job `web`) gira sempre; `.github/workflows/ios.yml` (`rule-engine-tests`, `ios-build`)
+gira solo se cambiano `iOS/`, `Packages/` o `project.yml`, oppure con "Run workflow".
+
+## Stato
+
+- [x] Fase W1: la logica in `web/src/engine/`
+- [ ] Fase W2: interfaccia e persistenza
+- [ ] Fase W3: guida ai comandi rapidi
+- [ ] Da provare sul telefono: la W1 non ha toccato iOS (elenco in `web/DESIGN.md`)
+
+## Parte iOS congelata
+
+Resta nel repo come riferimento: non modificarla. Le istruzioni qui sotto valgono solo se si riprende quella strada.
+
+### Architettura
 
 - `Packages/RuleEngine/` — logica pura in Swift, **nessun import di framework Apple oltre Foundation**.
   Si testa su Linux: `swift test --package-path Packages/RuleEngine`.
@@ -14,13 +56,13 @@ Sviluppo su Ubuntu; la compilazione iOS avviene in CI (GitHub Actions, macOS) o 
 - `iOS/MonitorExtension/` — `DeviceActivityMonitor`: legge, chiede a `ShieldDecision`, esegue, registra.
 - `project.yml` — XcodeGen. Il `.xcodeproj` è generato e non va committato.
 
-## Identificativi
+### Identificativi
 
 - Bundle ID app: `it.jacopo.focusguard`; estensione: `it.jacopo.focusguard.monitor`
 - App Group: `group.it.jacopo.focusguard` (in `iOS/Shared/AppGroup.swift` e nei due `.entitlements`)
 - Deployment target: iOS 17.4 · Swift language mode 5
 
-## Regole
+### Regole
 
 - Solo API pubbliche: FamilyControls, ManagedSettings, DeviceActivity. Mai API private.
 - Le app sono token opachi (`ApplicationToken`): non provare a ricavarne nome o bundle ID.
@@ -29,23 +71,23 @@ Sviluppo su Ubuntu; la compilazione iOS avviene in CI (GitHub Actions, macOS) o 
 - Uno `ManagedSettingsStore` per regola (`.rule(id)`) più `.manual` e `.protection` (disinstallazione, ora automatica).
 - Nuova logica → prima in RuleEngine con test XCTest, poi il collegamento iOS.
 - Log con `Log.app` / `Log.monitor` (OSLog, subsystem `it.jacopo.focusguard`).
-- Testi dell'interfaccia in italiano.
 - Se non sei sicuro della firma di un'API Apple, dillo e indica cosa verificare nella documentazione.
+- Testi dell'interfaccia in italiano.
 
-## Comandi
+### Comandi
 
 - Test logica (Ubuntu): `LC_ALL=C swift test --package-path Packages/RuleEngine -Xswiftc -use-ld=lld` (con il linker di default la build fallisce su questo sistema)
-- Build iOS: push su `main` o "Run workflow" in GitHub Actions (job `ios-build`)
+- Build iOS: "Run workflow" in GitHub Actions, workflow `iOS` (job `ios-build`)
 - Log dal telefono: `idevicesyslog | grep it.jacopo.focusguard`
 
-## Stato
+### Stato
 
 - [x] Fase 1–4: autorizzazione, blocco immediato, blocchi a orario, limiti giornalieri (codice scritto, da provare su device)
 - [x] Fase 5: PIN in Keychain + Face ID + attesa di 10 minuti con conferma entro 30, blocco disinstallazione opzionale (temporaneo se spento senza restrizioni attive), ora automatica, reset del PIN dimenticato dopo 24 ore, notifiche locali a fine attesa (codice scritto, da provare su device)
 - [ ] Fase 6: estensioni ShieldConfiguration, ShieldAction, DeviceActivityReport
 - [ ] Firma e installazione: richiede Apple Developer Program (Family Controls non disponibile con account gratuito)
 
-## Da verificare sul dispositivo
+### Da verificare sul dispositivo
 
 - `DeviceActivityEvent(..., includesPastActivity: true)`: che la soglia non scatti in anticipo.
 - `intervalDidStart` quando il monitoraggio parte a finestra già aperta (l'app blocca comunque subito).

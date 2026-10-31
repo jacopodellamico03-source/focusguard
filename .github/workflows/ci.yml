@@ -7,42 +7,18 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Motore regole: Linux, veloce e gratuito anche su repo privati (moltiplicatore 1x).
-  rule-engine-tests:
+  web:
     runs-on: ubuntu-latest
-    container: swift:6.0-noble
+    defaults:
+      run:
+        working-directory: web
     steps:
       - uses: actions/checkout@v5
-      - name: Test RuleEngine
-        run: swift test --package-path Packages/RuleEngine
-
-  # App iOS completa: compila senza firma per verificare che il codice regga.
-  # Su repo privati ogni minuto macOS ne consuma 10 del piano: gira solo su main o a mano.
-  ios-build:
-    needs: rule-engine-tests
-    if: github.event_name != 'pull_request'
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v5
-      - name: Installa XcodeGen
-        run: brew install xcodegen
-      - name: Genera il progetto
-        run: xcodegen generate
-      - name: Compila (senza firma)
-        run: |
-          xcodebuild \
-            -project FocusGuard.xcodeproj \
-            -scheme FocusGuard \
-            -configuration Debug \
-            -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=NO \
-            build
-      - name: Compila in Release (senza firma)
-        run: |
-          xcodebuild \
-            -project FocusGuard.xcodeproj \
-            -scheme FocusGuard \
-            -configuration Release \
-            -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=NO \
-            build
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
