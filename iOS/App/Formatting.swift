@@ -26,6 +26,26 @@ enum Formatting {
         }
     }
 
+    /// Generico di proposito: finisce sulla schermata di blocco.
+    static func notificationBody(for kind: RelaxationNotification.Kind) -> String {
+        switch kind {
+        case .windowOpened: return "Puoi confermare la modifica in FocusGuard."
+        case .expiringSoon: return "La richiesta in FocusGuard scade tra 5 minuti."
+        }
+    }
+
+    /// Nota sotto l'opzione "Impedisci la disinstallazione delle app".
+    static func note(for appRemoval: AppRemovalProtection) -> String? {
+        switch appRemoval {
+        case .suspended:
+            return "Spenta solo per ora: si riaccende da sola appena attivi una regola o il blocco immediato."
+        case .reenabledAutomatically:
+            return "Si è riaccesa da sola perché hai attivato una regola o il blocco immediato."
+        case .enabled, .disabled:
+            return nil
+        }
+    }
+
     static func duration(minutes: Int) -> String {
         let hours = minutes / 60
         let rest = minutes % 60

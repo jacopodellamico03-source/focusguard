@@ -41,7 +41,7 @@ Sviluppo su Ubuntu; la compilazione iOS avviene in CI (GitHub Actions, macOS) o 
 ## Stato
 
 - [x] Fase 1–4: autorizzazione, blocco immediato, blocchi a orario, limiti giornalieri (codice scritto, da provare su device)
-- [x] Fase 5: PIN in Keychain + Face ID + attesa di 10 minuti con conferma entro 30, blocco disinstallazione opzionale, ora automatica, reset del PIN dimenticato dopo 24 ore (codice scritto, da provare su device)
+- [x] Fase 5: PIN in Keychain + Face ID + attesa di 10 minuti con conferma entro 30, blocco disinstallazione opzionale (temporaneo se spento senza restrizioni attive), ora automatica, reset del PIN dimenticato dopo 24 ore, notifiche locali a fine attesa (codice scritto, da provare su device)
 - [ ] Fase 6: estensioni ShieldConfiguration, ShieldAction, DeviceActivityReport
 - [ ] Firma e installazione: richiede Apple Developer Program (Family Controls non disponibile con account gratuito)
 
@@ -56,5 +56,9 @@ Sviluppo su Ubuntu; la compilazione iOS avviene in CI (GitHub Actions, macOS) o 
 - Modifica confermata a un limite già scattato: dopo il riavvio del monitoraggio la soglia deve riscattare se l'uso la supera già.
 - Selettore del blocco immediato: se aggiorna la selezione solo alla conferma. Se la aggiornasse a ogni tocco, a blocco attivo la richiesta catturerebbe solo il primo cambio.
 - Pulsanti "Conferma"/"Annulla" nelle righe della lista: che non si attivino a vicenda.
-- Reset del PIN: "PIN dimenticato?" avvia l'attesa di 24 ore, la riga resta visibile riaprendo l'app, la conferma non chiede nulla e porta a `PINSetupView`; regole e blocchi restano attivi per tutto il tempo.
-- Opzione disinstallazione: senza regole attive né blocco immediato si disattiva subito; con almeno uno dei due parte l'attesa.
+- Reset del PIN: "PIN dimenticato?" (in Impostazioni, Cambia PIN e richiesta del PIN, anche durante il blocco dei tentativi) avvia l'attesa di 24 ore e diventa il conto alla rovescia; la riga resta visibile riaprendo l'app, la conferma non chiede nulla e porta a `PINSetupView`, chiudendo il foglio o la schermata da cui è partita; regole e blocchi restano attivi per tutto il tempo.
+- Opzione disinstallazione: senza regole attive né blocco immediato si disattiva subito, compare la nota e si riaccende da sola alla prima regola o al blocco immediato; con almeno uno dei due parte l'attesa e, confermata, resta spenta finché non la si riattiva a mano.
+- Notifiche, permesso: il dialogo compare alla prima richiesta creata e non all'avvio; se negato, una sola riga in cima alla lista e in Impostazioni, solo con richieste in corso, e l'app funziona uguale; riattivandolo dalle Impostazioni di iOS le notifiche mancanti partono al rientro nell'app.
+- Notifiche, consegna: una a fine attesa e una 5 minuti prima della scadenza, anche ad app chiusa e dopo un riavvio del telefono; testi generici sulla schermata di blocco.
+- Notifiche, cancellazione: annullando o confermando spariscono sia le programmate sia le consegnate; se la richiesta scade ad app chiusa, quella consegnata resta finché non si riapre l'app.
+- Notifiche con Full Immersion: se arrivano in ritardo l'avviso dei 5 minuti perde senso (`.timeSensitive` richiederebbe un entitlement in più, non aggiunto).

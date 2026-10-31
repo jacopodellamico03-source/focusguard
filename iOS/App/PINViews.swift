@@ -24,6 +24,24 @@ private func newPINErrors(pin: String, confirmation: String) -> [String] {
     return pin == confirmation ? [] : ["I due PIN non coincidono."]
 }
 
+/// "PIN dimenticato?" oppure, con un reset già in attesa, il suo conto alla rovescia.
+/// Disponibile anche durante il blocco dei tentativi: è lì che serve di più.
+struct ForgotPINSection: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Section {
+            if let reset = model.pendingRelaxation(for: .pinReset) {
+                PendingRelaxationView(request: reset)
+            } else {
+                Button("PIN dimenticato?") { model.requestPINReset() }
+            }
+        } footer: {
+            Text("Il reset richiede un'attesa di 24 ore. Alla fine avrai 30 minuti per confermare e creare un PIN nuovo. Nel frattempo le regole restano attive.")
+        }
+    }
+}
+
 /// Creazione del PIN al primo avvio: senza PIN non si entra nell'app.
 struct PINSetupView: View {
     @Environment(AppModel.self) private var model
@@ -98,16 +116,7 @@ struct PINEntryView: View {
                         Button("Conferma", action: confirm)
                             .disabled(lockout > 0 || pin.isEmpty)
                     }
-                    // Disponibile anche durante il blocco dei tentativi: è lì che serve di più.
-                    Section {
-                        Button("PIN dimenticato?") {
-                            model.requestPINReset()
-                            dismiss()
-                        }
-                        .disabled(model.pendingRelaxation(for: .pinReset) != nil)
-                    } footer: {
-                        Text("Avvia un'attesa di 24 ore. Alla fine avrai 30 minuti per confermare e creare un PIN nuovo. Nel frattempo le regole restano attive.")
-                    }
+                    ForgotPINSection()
                 }
             }
             .navigationTitle("Inserisci il PIN")
@@ -170,6 +179,7 @@ struct ChangePINView: View {
                     Button("Cambia PIN", action: change)
                         .disabled(lockout > 0 || current.isEmpty)
                 }
+                ForgotPINSection()
             }
         }
         .navigationTitle("Cambia PIN")

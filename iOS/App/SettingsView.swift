@@ -7,12 +7,19 @@ struct SettingsView: View {
     var body: some View {
         let pending = model.pendingRelaxation(for: .appRemovalProtection)
         Form {
+            NotificationsDeniedSection()
+
             Section {
                 Toggle("Impedisci la disinstallazione delle app", isOn: Binding(
                     get: { model.preventsAppRemoval },
                     set: { model.setPreventsAppRemoval($0) }
                 ))
                 .disabled(pending != nil)
+                if let note = Formatting.note(for: model.appRemoval) {
+                    Text(note)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 if let pending {
                     PendingRelaxationView(request: pending)
                 }
@@ -24,13 +31,27 @@ struct SettingsView: View {
 
             Section("PIN") {
                 NavigationLink("Cambia PIN") { ChangePINView() }
-                if let reset = model.pendingRelaxation(for: .pinReset) {
-                    PendingRelaxationView(request: reset)
-                }
             }
+
+            ForgotPINSection()
         }
         .navigationTitle("Impostazioni")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Avviso unico, non per richiesta: compare solo se c'è una richiesta in corso e il permesso è negato.
+struct NotificationsDeniedSection: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if model.showsNotificationsDeniedWarning {
+            Section {
+                Text("Notifiche disattivate: senza avviso la finestra di 30 minuti per confermare si può perdere.")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            }
+        }
     }
 }
 

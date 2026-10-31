@@ -359,15 +359,19 @@ final class ProtectionPolicyTests: XCTestCase {
     }
 
     func testDenyAppRemovalNeedsPreferenceAndSomethingActive() {
-        XCTAssertTrue(ProtectionPolicy.shouldDenyAppRemoval(rules: [on], isManualBlockActive: false, preventsAppRemoval: true))
-        XCTAssertTrue(ProtectionPolicy.shouldDenyAppRemoval(rules: [off, on], isManualBlockActive: false, preventsAppRemoval: true))
-        XCTAssertTrue(ProtectionPolicy.shouldDenyAppRemoval(rules: [], isManualBlockActive: true, preventsAppRemoval: true))
-        XCTAssertFalse(ProtectionPolicy.shouldDenyAppRemoval(rules: [off], isManualBlockActive: false, preventsAppRemoval: true))
-        XCTAssertFalse(ProtectionPolicy.shouldDenyAppRemoval(rules: [], isManualBlockActive: false, preventsAppRemoval: true))
+        XCTAssertTrue(ProtectionPolicy.shouldDenyAppRemoval(rules: [on], isManualBlockActive: false, appRemoval: .enabled))
+        XCTAssertTrue(ProtectionPolicy.shouldDenyAppRemoval(rules: [off, on], isManualBlockActive: false, appRemoval: .enabled))
+        XCTAssertTrue(ProtectionPolicy.shouldDenyAppRemoval(rules: [], isManualBlockActive: true, appRemoval: .enabled))
+        XCTAssertTrue(ProtectionPolicy.shouldDenyAppRemoval(rules: [on], isManualBlockActive: false, appRemoval: .reenabledAutomatically))
+        XCTAssertFalse(ProtectionPolicy.shouldDenyAppRemoval(rules: [off], isManualBlockActive: false, appRemoval: .enabled))
+        XCTAssertFalse(ProtectionPolicy.shouldDenyAppRemoval(rules: [], isManualBlockActive: false, appRemoval: .enabled))
     }
 
-    func testDenyAppRemovalOffWithPreferenceOff() {
-        XCTAssertFalse(ProtectionPolicy.shouldDenyAppRemoval(rules: [on], isManualBlockActive: true, preventsAppRemoval: false))
+    func testDenyAppRemovalOffOnlyWhenDisabledOnPurpose() {
+        XCTAssertFalse(ProtectionPolicy.shouldDenyAppRemoval(rules: [on], isManualBlockActive: true, appRemoval: .disabled))
+        // Vale anche se il riallineamento non è stato salvato.
+        XCTAssertTrue(ProtectionPolicy.shouldDenyAppRemoval(rules: [on], isManualBlockActive: false, appRemoval: .suspended))
+        XCTAssertFalse(ProtectionPolicy.shouldDenyAppRemoval(rules: [off], isManualBlockActive: false, appRemoval: .suspended))
     }
 
     func testAutomaticDateAndTimeIgnoresThePreference() {
@@ -378,14 +382,255 @@ final class ProtectionPolicyTests: XCTestCase {
 
     func testStateDefaultsAndRoundTrip() throws {
         var state = ProtectionState()
-        XCTAssertTrue(state.preventsAppRemoval)
+        XCTAssertEqual(state.appRemoval, .enabled)
         XCTAssertEqual(state.attempts, PINAttemptPolicy())
         XCTAssertTrue(state.pending.items.isEmpty)
 
-        state.preventsAppRemoval = false
+        state.appRemoval = .suspended
         state.attempts.registerFailure(at: date(2026, 11, 2, 10))
         state.pending.enqueue(.disableManualBlock, at: date(2026, 11, 2, 10))
         let decoded = try JSONDecoder().decode(ProtectionState.self, from: JSONEncoder().encode(state))
         XCTAssertEqual(decoded, state)
+    }
+}
+
+final class AppRemovalProtectionTests: XCTestCase {
+    func testOnOrOff() {
+        XCTAssertTrue(AppRemovalProtection.enabled.isOn)
+        XCTAssertTrue(AppRemovalProtection.reenabledAutomatically.isOn)
+        XCTAssertFalse(AppRemovalProtection.suspended.isOn)
+        XCTAssertFalse(AppRemovalProtection.disabled.isOn)
+    }
+
+    func testTurningOffWithoutWaitIsTemporary() {
+        XCTAssertEqual(ProtectionPolicy.appRemovalWithoutWait(from: .enabled, enabled: false), .suspended)
+        XCTAssertEqual(ProtectionPolicy.appRemovalWithoutWait(from: .reenabledAutomatically, enabled: false), .suspended)
+    }
+
+    func testTurningOnByHandAlwaysGivesPlainEnabled() {
+        XCTAssertEqual(ProtectionPolicy.appRemovalWithoutWait(from: .suspended, enabled: true), .enabled)
+        XCTAssertEqual(ProtectionPolicy.appRemovalWithoutWait(from: .disabled, enabled: true), .enabled)
+    }
+
+    func testRepeatingTheCurrentValueChangesNothing() {
+        // Spegnere di nuovo non deve rendere temporanea una disattivazione confermata col PIN.
+        XCTAssertEqual(ProtectionPolicy.appRemovalWithoutWait(from: .disabled, enabled: false), .disabled)
+        XCTAssertEqual(ProtectionPolicy.appRemovalWithoutWait(from: .suspended, enabled: false), .suspended)
+        XCTAssertEqual(ProtectionPolicy.appRemovalWithoutWait(from: .enabled, enabled: true), .enabled)
+        XCTAssertEqual(ProtectionPolicy.appRemovalWithoutWait(from: .reenabledAutomatically, enabled: true), .reenabledAutomatically)
+    }
+
+    func testSuspendedComesBackWithTheFirstRestriction() {
+        XCTAssertEqual(ProtectionPolicy.reconciled(.suspended, hasActiveRestrictions: false), .suspended)
+        XCTAssertEqual(ProtectionPolicy.reconciled(.suspended, hasActiveRestrictions: true), .reenabledAutomatically)
+    }
+
+    func testDisabledNeverComesBackByItself() {
+        XCTAssertEqual(ProtectionPolicy.reconciled(.disabled, hasActiveRestrictions: true), .disabled)
+        XCTAssertEqual(ProtectionPolicy.reconciled(.disabled, hasActiveRestrictions: false), .disabled)
+    }
+
+    func testOtherStatesDoNotChange() {
+        for active in [true, false] {
+            XCTAssertEqual(ProtectionPolicy.reconciled(.enabled, hasActiveRestrictions: active), .enabled)
+            // La nota resta anche quando le restrizioni finiscono: si toglie cambiando l'opzione.
+            XCTAssertEqual(ProtectionPolicy.reconciled(.reenabledAutomatically, hasActiveRestrictions: active), .reenabledAutomatically)
+        }
+    }
+
+    func testTemporaryOffThenRuleThenOffAgainIsTemporaryAgain() {
+        let off = ProtectionPolicy.appRemovalWithoutWait(from: .enabled, enabled: false)
+        let back = ProtectionPolicy.reconciled(off, hasActiveRestrictions: true)
+        XCTAssertEqual(back, .reenabledAutomatically)
+        XCTAssertEqual(ProtectionPolicy.appRemovalWithoutWait(from: back, enabled: false), .suspended)
+    }
+}
+
+final class ProtectionStateMigrationTests: XCTestCase {
+    /// `protection.json` com'era prima di `AppRemovalProtection`.
+    private func legacyJSON(preventsAppRemoval: String) -> Data {
+        Data("""
+        {
+          "attempts": { "failedAttempts": 5, "lockedUntil": 815400000 },
+          "pending": { "items": [
+            {
+              "id": "6F9619FF-8B86-D011-B42D-00C04FC964FF",
+              "change": { "disableManualBlock": {} },
+              "cooldown": { "requestedAt": 815300000, "duration": 600 }
+            }
+          ] }
+          \(preventsAppRemoval)
+        }
+        """.utf8)
+    }
+
+    private func decode(_ data: Data) throws -> ProtectionState {
+        try JSONDecoder().decode(ProtectionState.self, from: data)
+    }
+
+    func testLegacyTrueBecomesEnabled() throws {
+        XCTAssertEqual(try decode(legacyJSON(preventsAppRemoval: #", "preventsAppRemoval": true"#)).appRemoval, .enabled)
+    }
+
+    func testLegacyFalseStaysOffUntilTurnedOnByHand() throws {
+        // Il vecchio file non dice come era stata spenta: vale il significato che aveva, resta spenta.
+        let state = try decode(legacyJSON(preventsAppRemoval: #", "preventsAppRemoval": false"#))
+        XCTAssertEqual(state.appRemoval, .disabled)
+        XCTAssertEqual(ProtectionPolicy.reconciled(state.appRemoval, hasActiveRestrictions: true), .disabled)
+    }
+
+    func testMissingKeyMeansEnabled() throws {
+        XCTAssertEqual(try decode(legacyJSON(preventsAppRemoval: "")).appRemoval, .enabled)
+    }
+
+    func testMigrationKeepsAttemptsAndPendingRequests() throws {
+        let state = try decode(legacyJSON(preventsAppRemoval: #", "preventsAppRemoval": false"#))
+        XCTAssertEqual(state.attempts.failedAttempts, 5)
+        XCTAssertEqual(state.attempts.lockedUntil, Date(timeIntervalSinceReferenceDate: 815_400_000))
+        XCTAssertEqual(state.pending.items.count, 1)
+        XCTAssertEqual(state.pending.items.first?.change, .disableManualBlock)
+        XCTAssertEqual(state.pending.items.first?.cooldown.requestedAt, Date(timeIntervalSinceReferenceDate: 815_300_000))
+    }
+
+    func testMigratedStateIsSavedInTheNewFormat() throws {
+        let state = try decode(legacyJSON(preventsAppRemoval: #", "preventsAppRemoval": false"#))
+        let saved = try JSONEncoder().encode(state)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: saved) as? [String: Any])
+        XCTAssertNil(object["preventsAppRemoval"])
+        XCTAssertEqual(object["appRemoval"] as? String, "disabled")
+        XCTAssertEqual(try decode(saved), state)
+    }
+
+    func testNewFormatWinsOverLeftoverLegacyKey() throws {
+        let json = legacyJSON(preventsAppRemoval: #", "preventsAppRemoval": false, "appRemoval": "suspended""#)
+        XCTAssertEqual(try decode(json).appRemoval, .suspended)
+    }
+}
+
+final class RelaxationNotificationPlanTests: XCTestCase {
+    private let start = date(2026, 11, 2, 10)
+
+    private func request(_ change: PendingRelaxation.Change = .disableManualBlock) -> PendingRelaxation {
+        PendingRelaxation(change: change, requestedAt: start)
+    }
+
+    private func id(_ request: PendingRelaxation, _ kind: RelaxationNotification.Kind) -> String {
+        RelaxationNotification.identifier(requestID: request.id, kind: kind)
+    }
+
+    // MARK: Date
+
+    func testTenMinuteWait() {
+        let notifications = RelaxationNotificationPlan.notifications(for: request(), now: start)
+        XCTAssertEqual(notifications.map(\.kind), [.windowOpened, .expiringSoon])
+        XCTAssertEqual(notifications.map(\.fireDate), [start.addingTimeInterval(600), start.addingTimeInterval(2100)])
+    }
+
+    func testPINResetWait() {
+        let notifications = RelaxationNotificationPlan.notifications(for: request(.resetPIN), now: start)
+        XCTAssertEqual(notifications.map(\.fireDate), [start.addingTimeInterval(86_400), start.addingTimeInterval(87_900)])
+    }
+
+    func testWarningComesFiveMinutesBeforeExpiry() {
+        let pending = request()
+        XCTAssertEqual(RelaxationNotification.expiryWarning, 300)
+        let warning = RelaxationNotificationPlan.notifications(for: pending, now: start).last
+        XCTAssertEqual(warning?.fireDate, pending.expiresAt.addingTimeInterval(-300))
+    }
+
+    // MARK: Date passate
+
+    func testWindowAlreadyOpenLeavesOnlyTheWarning() {
+        let notifications = RelaxationNotificationPlan.notifications(for: request(), now: start.addingTimeInterval(601))
+        XCTAssertEqual(notifications.map(\.kind), [.expiringSoon])
+    }
+
+    func testLastFiveMinutesLeaveNothing() {
+        XCTAssertEqual(RelaxationNotificationPlan.notifications(for: request(), now: start.addingTimeInterval(2101)), [])
+    }
+
+    func testExpiredLeavesNothing() {
+        XCTAssertEqual(RelaxationNotificationPlan.notifications(for: request(), now: start.addingTimeInterval(9_999)), [])
+    }
+
+    func testDateEqualToNowCountsAsPast() {
+        let opening = RelaxationNotificationPlan.notifications(for: request(), now: start.addingTimeInterval(600))
+        XCTAssertEqual(opening.map(\.kind), [.expiringSoon])
+        XCTAssertEqual(RelaxationNotificationPlan.notifications(for: request(), now: start.addingTimeInterval(2100)), [])
+    }
+
+    // MARK: Identificativi
+
+    func testIdentifierIsDerivedFromRequestAndKind() {
+        let pending = request()
+        let identifiers = RelaxationNotificationPlan.notifications(for: pending, now: start).map(\.identifier)
+        XCTAssertEqual(identifiers, [id(pending, .windowOpened), id(pending, .expiringSoon)])
+        XCTAssertEqual(Set(identifiers).count, 2)
+        XCTAssertTrue(identifiers.allSatisfy { $0.hasPrefix(RelaxationNotification.identifierPrefix) && $0.contains(pending.id.uuidString) })
+    }
+
+    // MARK: Riallineamento
+
+    func testSchedulesWhatIsMissing() {
+        let pending = request()
+        let result = RelaxationNotificationPlan.reconcile(requests: [pending], scheduled: [id(pending, .windowOpened)], delivered: [], now: start)
+        XCTAssertEqual(result.toSchedule.map(\.identifier), [id(pending, .expiringSoon)])
+        XCTAssertEqual(result.toCancel, [])
+        XCTAssertEqual(result.toRemoveDelivered, [])
+    }
+
+    func testAlignedStateDoesNothing() {
+        let pending = request()
+        let scheduled: Set = [id(pending, .windowOpened), id(pending, .expiringSoon)]
+        let result = RelaxationNotificationPlan.reconcile(requests: [pending], scheduled: scheduled, delivered: [], now: start)
+        XCTAssertEqual(result, .init(toSchedule: [], toCancel: [], toRemoveDelivered: []))
+    }
+
+    func testCancelledRequestLosesItsNotifications() {
+        let gone = request()
+        let scheduled: Set = [id(gone, .windowOpened), id(gone, .expiringSoon)]
+        let delivered: Set = [id(gone, .windowOpened)]
+        let result = RelaxationNotificationPlan.reconcile(requests: [], scheduled: scheduled, delivered: delivered, now: start)
+        XCTAssertEqual(result.toSchedule, [])
+        XCTAssertEqual(result.toCancel, scheduled)
+        XCTAssertEqual(result.toRemoveDelivered, delivered)
+    }
+
+    func testExpiredRequestCountsAsGone() {
+        let expired = request()
+        let delivered: Set = [id(expired, .windowOpened), id(expired, .expiringSoon)]
+        let result = RelaxationNotificationPlan.reconcile(requests: [expired], scheduled: [], delivered: delivered, now: start.addingTimeInterval(2400))
+        XCTAssertEqual(result.toSchedule, [])
+        XCTAssertEqual(result.toRemoveDelivered, delivered)
+    }
+
+    func testDeliveredNotificationOfLiveRequestStaysAndIsNotRescheduled() {
+        let pending = request()
+        let now = start.addingTimeInterval(700)
+        let result = RelaxationNotificationPlan.reconcile(requests: [pending], scheduled: [id(pending, .expiringSoon)], delivered: [id(pending, .windowOpened)], now: now)
+        XCTAssertEqual(result, .init(toSchedule: [], toCancel: [], toRemoveDelivered: []))
+    }
+
+    func testScheduledNotificationDueRightNowIsNotCancelled() {
+        // iOS può non averla ancora consegnata: cancellarla la perderebbe.
+        let pending = request()
+        let now = start.addingTimeInterval(600)
+        let result = RelaxationNotificationPlan.reconcile(requests: [pending], scheduled: [id(pending, .windowOpened), id(pending, .expiringSoon)], delivered: [], now: now)
+        XCTAssertEqual(result.toCancel, [])
+        XCTAssertEqual(result.toSchedule, [])
+    }
+
+    func testIdentifiersOfOthersAreIgnored() {
+        let result = RelaxationNotificationPlan.reconcile(requests: [], scheduled: ["altro"], delivered: ["altro"], now: start)
+        XCTAssertEqual(result, .init(toSchedule: [], toCancel: [], toRemoveDelivered: []))
+    }
+
+    func testRequestsAreReconciledIndependently() {
+        let kept = request(.resetPIN)
+        let gone = request()
+        let scheduled: Set = [id(kept, .windowOpened), id(kept, .expiringSoon), id(gone, .windowOpened)]
+        let result = RelaxationNotificationPlan.reconcile(requests: [kept], scheduled: scheduled, delivered: [], now: start)
+        XCTAssertEqual(result.toSchedule, [])
+        XCTAssertEqual(result.toCancel, [id(gone, .windowOpened)])
     }
 }

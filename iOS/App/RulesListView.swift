@@ -46,6 +46,8 @@ struct RulesListView: View {
     var body: some View {
         NavigationStack {
             List {
+                NotificationsDeniedSection()
+
                 if let reset = model.pendingRelaxation(for: .pinReset) {
                     Section("PIN") {
                         PendingRelaxationView(request: reset)

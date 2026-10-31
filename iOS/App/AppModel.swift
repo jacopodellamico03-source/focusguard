@@ -25,6 +25,8 @@ final class AppModel {
     private var protection = ProtectionState()
     /// Selezioni proposte dalle richieste in attesa, per id della richiesta.
     private var pendingSelections: [UUID: FamilyActivitySelection] = [:]
+    private var areNotificationsDenied = false
+    private var notificationSync: Task<Void, Never>?
     var errorMessage: String?
 
     private let repository = RuleRepository()
@@ -32,8 +34,11 @@ final class AppModel {
     private let shields = ShieldController()
     private let eventLog = EventLogStore()
     private let pinStore = PINStore()
+    private let notifier = RelaxationNotifier()
 
-    var preventsAppRemoval: Bool { protection.preventsAppRemoval }
+    var preventsAppRemoval: Bool { protection.appRemoval.isOn }
+    var appRemoval: AppRemovalProtection { protection.appRemoval }
+    var showsNotificationsDeniedWarning: Bool { areNotificationsDenied && !protection.pending.items.isEmpty }
 
     // MARK: Avvio
 
@@ -48,6 +53,7 @@ final class AppModel {
         protection = repository.loadProtection()
         pendingSelections = repository.loadPendingSelections()
         removeExpiredRelaxations()
+        syncNotifications()
         eventLog.prune()
         if authorizationStatus == .approved {
             applyMonitoring()
@@ -204,7 +210,7 @@ final class AppModel {
     func setPreventsAppRemoval(_ enabled: Bool) {
         guard pendingRelaxation(for: .appRemovalProtection) == nil else { return }
         let impact = ChangePolicy.appRemovalProtectionImpact(
-            wasEnabled: protection.preventsAppRemoval,
+            wasEnabled: protection.appRemoval.isOn,
             isEnabled: enabled,
             hasActiveRestrictions: ProtectionPolicy.hasActiveRestrictions(
                 rules: rules,
@@ -215,7 +221,7 @@ final class AppModel {
             enqueue(.disableAppRemovalProtection)
             return
         }
-        protection.preventsAppRemoval = enabled
+        protection.appRemoval = ProtectionPolicy.appRemovalWithoutWait(from: protection.appRemoval, enabled: enabled)
         persistProtection()
         updateProtection()
     }
@@ -323,6 +329,7 @@ final class AppModel {
         expired.forEach { pendingSelections[$0.id] = nil }
         savePendingSelections()
         persistProtection()
+        syncNotifications()
     }
 
     func confirmPending(id: UUID, pin: String) -> PINCheckResult {
@@ -364,6 +371,7 @@ final class AppModel {
             savePendingSelections()
         }
         persistProtection()
+        syncNotifications(askingPermission: true)
     }
 
     private func forgetRequest(id: UUID) {
@@ -371,6 +379,7 @@ final class AppModel {
         if pendingSelections.removeValue(forKey: id) != nil {
             savePendingSelections()
         }
+        syncNotifications()
     }
 
     /// Si applica prima e si dimentica dopo: se l'app muore in mezzo, ripetere la conferma non fa danni.
@@ -407,7 +416,7 @@ final class AppModel {
                 persist()
             }
         case .disableAppRemovalProtection:
-            protection.preventsAppRemoval = false
+            protection.appRemoval = .disabled
             updateProtection()
         case .resetPIN:
             do {
@@ -455,12 +464,34 @@ final class AppModel {
         }
     }
 
+    /// In fila: una sincronizzazione vecchia non deve riprogrammare ciò che una più recente ha cancellato.
+    private func syncNotifications(askingPermission: Bool = false) {
+        let previous = notificationSync
+        notificationSync = Task {
+            await previous?.value
+            if askingPermission { await notifier.requestPermission() }
+            areNotificationsDenied = await notifier.sync(with: protection.pending.items)
+        }
+    }
+
+    /// Unico passaggio di ogni modifica a regole e blocco immediato: qui finisce la disattivazione temporanea.
     private func updateProtection() {
+        let reconciled = ProtectionPolicy.reconciled(
+            protection.appRemoval,
+            hasActiveRestrictions: ProtectionPolicy.hasActiveRestrictions(
+                rules: rules,
+                isManualBlockActive: isManualBlockActive
+            )
+        )
+        if reconciled != protection.appRemoval {
+            protection.appRemoval = reconciled
+            persistProtection()
+        }
         shields.setProtection(
             denyAppRemoval: ProtectionPolicy.shouldDenyAppRemoval(
                 rules: rules,
                 isManualBlockActive: isManualBlockActive,
-                preventsAppRemoval: protection.preventsAppRemoval
+                appRemoval: protection.appRemoval
             ),
             requireAutomaticDateAndTime: ProtectionPolicy.shouldRequireAutomaticDateAndTime(
                 rules: rules,
